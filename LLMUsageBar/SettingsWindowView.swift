@@ -8,8 +8,6 @@ struct GeneralSettingsTab: View {
     @State private var appLanguage = GeneralSettingsTab.normalizedLanguage(
         (UserDefaults.standard.array(forKey: "AppleLanguages") as? [String])?.first)
     @State private var showRestartAlert = false
-    @State private var refreshSecondsText: String
-    @FocusState private var refreshFieldFocused: Bool
 
     private let languages: [(code: String, name: String)] = [
         ("en", "English"),
@@ -28,7 +26,6 @@ struct GeneralSettingsTab: View {
     init(config: Config, onChange: @escaping (Config) -> Void) {
         self.onChange = onChange
         _config = State(initialValue: config)
-        _refreshSecondsText = State(initialValue: "\(Int(config.refreshSeconds.rounded()))")
     }
 
     var body: some View {
@@ -38,38 +35,29 @@ struct GeneralSettingsTab: View {
                     .onChange(of: launchAtLogin) { newValue in applyLaunchAtLogin(newValue) }
             }
 
-            Section(header: Text("settings.section.refresh"),
-                    footer: Text("settings.refreshDescription")) {
-                HStack {
-                    Text("settings.refreshInterval")
-                    Spacer()
-                    TextField("", text: $refreshSecondsText)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 44)
-                        .focused($refreshFieldFocused)
-                        .onChange(of: refreshSecondsText) { newValue in
-                            let filtered = newValue.filter { $0.isNumber }
-                            if filtered != newValue { refreshSecondsText = filtered }
-                        }
-                        .onSubmit { commitRefreshSecondsText() }
-                        .onChange(of: refreshFieldFocused) { focused in
-                            if !focused { commitRefreshSecondsText() }
-                        }
-
-                    Stepper("", value: Binding(
-                        get: { Int(config.refreshSeconds.rounded()) },
-                        set: { applyRefreshSeconds($0) }
-                    ), in: 15...3600, step: 15)
-                    .labelsHidden()
-                    .onChange(of: config.refreshSeconds) { newValue in
-                        if !refreshFieldFocused { refreshSecondsText = "\(Int(newValue.rounded()))" }
+            Section(header: Text("settings.section.appearance")) {
+                Picker("settings.menuBarStyle", selection: Binding(
+                    get: { config.menuBarStyle },
+                    set: { updateConfig(\.menuBarStyle, $0) }
+                )) {
+                    ForEach(Config.MenuBarStyle.allCases) { style in
+                        Text(LocalizedStringKey(style.titleKey)).tag(style)
                     }
                 }
+                .pickerStyle(.segmented)
+
+                Picker("settings.language", selection: $appLanguage) {
+                    ForEach(languages, id: \.code) { lang in
+                        Text(lang.name).tag(lang.code)
+                    }
+                }
+                .pickerStyle(.menu)
+                .onChange(of: appLanguage) { newValue in
+                    UserDefaults.standard.set([newValue], forKey: "AppleLanguages")
+                    showRestartAlert = true
+                }
             }
-
-
-            Section(header: Text("settings.section.alerts"),
-                    footer: Text("settings.alertsDescription")) {
+            Section(header: Text("settings.section.alerts")) {
                 Toggle("settings.thresholdAlerts", isOn: Binding(
                     get: { config.thresholdAlertsEnabled },
                     set: { updateConfig(\.thresholdAlertsEnabled, $0) }
@@ -82,39 +70,14 @@ struct GeneralSettingsTab: View {
                         .foregroundStyle(.secondary)
                     Stepper("", value: Binding(
                         get: { Int(config.warningThreshold.rounded()) },
-                        set: { updateConfig(\.warningThreshold, Double(min($0, Int(config.criticalThreshold)))) }
+                        set: { updateConfig(\.warningThreshold, Double($0)) }
                     ), in: 50...100, step: 5)
                     .labelsHidden()
                 }
                 .disabled(!config.thresholdAlertsEnabled)
 
-                HStack {
-                    Text("settings.criticalThreshold")
-                    Spacer()
-                    Text("\(Int(config.criticalThreshold.rounded()))%")
-                        .foregroundStyle(.secondary)
-                    Stepper("", value: Binding(
-                        get: { Int(config.criticalThreshold.rounded()) },
-                        set: { updateConfig(\.criticalThreshold, Double(max($0, Int(config.warningThreshold)))) }
-                    ), in: 50...100, step: 5)
-                    .labelsHidden()
-                }
-                .disabled(!config.thresholdAlertsEnabled)
             }
 
-            Section(header: Text("settings.section.language"),
-                    footer: Text("settings.languageFooter")) {
-                Picker("settings.language", selection: $appLanguage) {
-                    ForEach(languages, id: \.code) { lang in
-                        Text(lang.name).tag(lang.code)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: appLanguage) { newValue in
-                    UserDefaults.standard.set([newValue], forKey: "AppleLanguages")
-                    showRestartAlert = true
-                }
-            }
         }
         .font(OrbTypography.swiftUIRegular(13))
         .formStyle(.grouped)
@@ -132,23 +95,6 @@ struct GeneralSettingsTab: View {
         } message: {
             Text("settings.restartMessage")
         }
-    }
-
-    private func applyRefreshSeconds(_ value: Int) {
-        let clamped = min(3600, max(15, value))
-        guard Double(clamped) != config.refreshSeconds else { return }
-        config.refreshSeconds = Double(clamped)
-        onChange(config)
-    }
-
-    /// Parses the typed digits, clamps into range, and snaps the text field
-    /// back to whatever value actually got applied (e.g. after clamping, or
-    /// after invalid/empty input reverts to the current setting).
-    private func commitRefreshSecondsText() {
-        if let value = Int(refreshSecondsText) {
-            applyRefreshSeconds(value)
-        }
-        refreshSecondsText = "\(Int(config.refreshSeconds.rounded()))"
     }
 
     private func updateConfig<Value>(_ keyPath: WritableKeyPath<Config, Value>, _ value: Value) {

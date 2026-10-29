@@ -3,28 +3,35 @@ import Foundation
 /// User-editable settings. Lives at ~/.config/llm-usage-bar/config.json.
 /// Codex reports official rate limits directly, so there's little to tune here.
 struct Config: Codable {
-    /// How often to refresh, seconds.
-    var refreshSeconds: Double = 60
+    /// Fallback polling cadence; account notifications refresh immediately.
+    static let refreshSeconds: TimeInterval = 60
     var providerID: UsageProviderID = .codex
     var selectedQuotaIDs: [String: String] = [:]
     var menuBarDisplayMode: MenuBarDisplayMode = .fiveHour
+    var menuBarStyle: MenuBarStyle = .ring
     var percentDisplayMode: PercentDisplayMode = .remaining
     var thresholdAlertsEnabled: Bool = true
     var warningThreshold: Double = 80
-    var criticalThreshold: Double = 95
+    static let criticalColorThreshold: Double = 95
 
     init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        refreshSeconds = try c.decodeIfPresent(Double.self, forKey: .refreshSeconds) ?? 60
         providerID = try c.decodeIfPresent(UsageProviderID.self, forKey: .providerID) ?? .codex
         selectedQuotaIDs = try c.decodeIfPresent([String: String].self, forKey: .selectedQuotaIDs) ?? [:]
         menuBarDisplayMode = try c.decodeIfPresent(MenuBarDisplayMode.self, forKey: .menuBarDisplayMode) ?? .fiveHour
+        menuBarStyle = try c.decodeIfPresent(MenuBarStyle.self, forKey: .menuBarStyle) ?? .ring
         percentDisplayMode = try c.decodeIfPresent(PercentDisplayMode.self, forKey: .percentDisplayMode) ?? .remaining
         thresholdAlertsEnabled = try c.decodeIfPresent(Bool.self, forKey: .thresholdAlertsEnabled) ?? true
-        warningThreshold = try c.decodeIfPresent(Double.self, forKey: .warningThreshold) ?? 80
-        criticalThreshold = try c.decodeIfPresent(Double.self, forKey: .criticalThreshold) ?? 95
+        warningThreshold = min(100, max(50,
+            try c.decodeIfPresent(Double.self, forKey: .warningThreshold) ?? 80))
+    }
+
+    enum MenuBarStyle: String, Codable, CaseIterable, Identifiable {
+        case ring, text
+        var id: String { rawValue }
+        var titleKey: String { "settings.menuBarStyle.\(rawValue)" }
     }
 
     enum MenuBarDisplayMode: String, Codable, CaseIterable, Identifiable {

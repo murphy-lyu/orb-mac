@@ -37,9 +37,6 @@ final class SettingsOpener: NSObject, NSToolbarDelegate {
             NSApp.activate(ignoringOtherApps: true)
             self.window?.makeKeyAndOrderFront(nil)
             self.window?.orderFrontRegardless()
-            // AppKit auto-focuses the first key view (the refresh-interval
-            // text field) when the window becomes key, showing it selected.
-            // Hand focus back to the window itself so nothing starts active.
             self.window?.makeFirstResponder(nil)
         }
     }
@@ -57,7 +54,7 @@ final class SettingsOpener: NSObject, NSToolbarDelegate {
 
     private func makeWindow() -> NSWindow {
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 400),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -74,7 +71,7 @@ final class SettingsOpener: NSObject, NSToolbarDelegate {
         let controller = NSHostingController(rootView: view(for: .general))
         controller.sizingOptions = []
         win.contentViewController = controller
-        win.setContentSize(NSSize(width: 460, height: 420))
+        win.setContentSize(NSSize(width: 460, height: 400))
         hosting = controller
 
         win.center()

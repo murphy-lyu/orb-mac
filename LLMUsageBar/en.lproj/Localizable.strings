@@ -1,4 +1,9 @@
 "action.quit" = "Quit";
+"settings.section.appearance" = "Appearance";
+"settings.menuBarStyle" = "Menu bar";
+"settings.menuBarStyle.ring" = "Ring";
+"settings.menuBarStyle.text" = "Text";
+"status.resetsAt" = "Resets at %@";
 "action.refresh" = "Refresh Now";
 "action.cancel" = "Cancel";
 "action.save" = "Save";
@@ -43,7 +48,7 @@
 
 "settings.about" = "About";
 "settings.alertsDescription" = "Notifications are sent once when a limit crosses the selected thresholds, then reset after usage drops.";
-"settings.criticalThreshold" = "Critical alert";
+"settings.criticalThreshold" = "Critical";
 "settings.configFile" = "Config file";
 "settings.general" = "General";
 "settings.language" = "Language";
@@ -62,15 +67,15 @@
 "settings.restartButton" = "Restart Now";
 "settings.restartMessage" = "Please restart Orb to apply the language change.";
 "settings.restartTitle" = "Restart Required";
-"settings.section.alerts" = "Alerts";
+"settings.section.alerts" = "Usage Alerts";
 "settings.section.language" = "Language";
 "settings.section.menuBar" = "Menu Bar";
 "settings.section.refresh" = "Refresh";
 "settings.section.startup" = "Startup";
 "settings.showInFinder" = "Show in Finder";
-"settings.thresholdAlerts" = "Usage threshold alerts";
+"settings.thresholdAlerts" = "Notifications";
 "settings.title" = "Settings";
-"settings.warningThreshold" = "Warning alert";
+"settings.warningThreshold" = "Alert threshold";
 
 "status.estimated" = "Estimated";
 "status.loading" = "Loading…";

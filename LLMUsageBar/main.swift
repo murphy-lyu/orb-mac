@@ -31,6 +31,42 @@ enum OrbTypography {
     }
 }
 
+final class UsageRingView: NSView {
+    var fraction: Double? { didSet { needsDisplay = true } }
+    var letter = "" { didSet { needsDisplay = true } }
+    var riskColor: NSColor? { didSet { needsDisplay = true } }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let highlighted = (superview as? NSButton)?.isHighlighted == true
+        let color = highlighted ? NSColor.white : (riskColor ?? .labelColor)
+        let center = NSPoint(x: bounds.midX, y: bounds.midY)
+        let lineWidth: CGFloat = 2
+        let radius: CGFloat = (16 - lineWidth) / 2
+        let track = NSBezierPath(ovalIn: NSRect(
+            x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+        track.lineWidth = lineWidth
+        color.withAlphaComponent(0.20).setStroke()
+        track.stroke()
+        if let fraction, fraction > 0 {
+            let arc = NSBezierPath()
+            arc.lineWidth = lineWidth
+            arc.lineCapStyle = .round
+            arc.appendArc(withCenter: center, radius: radius, startAngle: 90,
+                          endAngle: 90 - CGFloat(min(1, max(0, fraction))) * 360,
+                          clockwise: true)
+            color.setStroke()
+            arc.stroke()
+        }
+        let text = NSAttributedString(string: letter, attributes: [
+            .font: OrbTypography.regular(10), .foregroundColor: color
+        ])
+        let size = text.size()
+        text.draw(at: NSPoint(x: center.x - size.width / 2, y: center.y - size.height / 2))
+    }
+}
+
 private enum OrbTheme {
     static var accent: NSColor {
         NSColor(named: "AccentColor") ?? .controlAccentColor
@@ -577,6 +613,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let logger = Logger(subsystem: "local.llmusagebar",
                                        category: "Refresh")
     private var statusItem: NSStatusItem!
+    private let ringView = UsageRingView(frame: .zero)
     private var timer: Timer?
     private var config = Config.load()
     private var settingsOpener: SettingsOpener?
@@ -598,7 +635,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.isVisible = true
-        statusItem.button?.title = "…"  // text-only, no icon — saves menu-bar space
+        statusItem.button?.title = "…"
+        if let button = statusItem.button {
+            ringView.frame = button.bounds
+            ringView.autoresizingMask = [.width, .height]
+            button.addSubview(ringView)
+        }
+        configureStatusStyle()
         let placeholder = NSMenu(); placeholder.addItem(sub("status.loading".l10n, dim: true))
         placeholder.delegate = self
         statusItem.menu = placeholder
@@ -629,7 +672,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func scheduleTimer() {
         timer?.invalidate()
-        let nextTimer = Timer(timeInterval: max(15, config.refreshSeconds),
+        let nextTimer = Timer(timeInterval: Config.refreshSeconds,
                               repeats: true) { [weak self] _ in self?.refresh() }
         RunLoop.main.add(nextTimer, forMode: .common)
         timer = nextTimer
@@ -711,11 +754,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateTitle(_ p: ProviderUsage) {
         guard let button = statusItem.button else { return }
+        configureStatusStyle()
         guard p.available else {
-            button.toolTip = nil
-            button.attributedTitle = NSAttributedString(string: "\(p.name) ⚠︎", attributes: [
+            ringView.fraction = nil
+            ringView.letter = "?"
+            ringView.riskColor = nil
+            button.toolTip = "\(p.name) · \("status.unavailable".l10n)"
+            button.setAccessibilityLabel(button.toolTip)
+            if config.menuBarStyle == .text { button.attributedTitle = NSAttributedString(string: "\(p.name) ⚠︎", attributes: [
                 .font: OrbTypography.regular(12),
-                .foregroundColor: NSColor.secondaryLabelColor])
+                .foregroundColor: NSColor.secondaryLabelColor]) }
             return
         }
         let quotaID = config.selectedQuotaID(for: p.providerID)
@@ -729,18 +777,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             formatter.timeStyle = .short
             button.toolTip = String(format: "status.recovery".l10n,
                                     recovery.label, formatter.string(from: reset))
+        } else if let selected {
+            var details = [selected.label,
+                           selected.percent == nil ? "—" : String(format: displayPercentFormat(), selected.displayPercent(for: config.percentDisplayMode))]
+            if let reset = selected.resetAt {
+                let formatter = DateFormatter()
+                formatter.locale = .autoupdatingCurrent
+                formatter.dateStyle = .medium
+                formatter.timeStyle = .short
+                details.append(String(format: "status.resetsAt".l10n, formatter.string(from: reset)))
+            }
+            button.toolTip = details.joined(separator: " · ")
         } else {
-            button.toolTip = nil
+            button.toolTip = p.name
         }
+        button.setAccessibilityLabel(button.toolTip)
+        ringView.letter = selected.map {
+            switch $0.kind {
+            case .fiveHour: return "H"
+            case .weekly: return "W"
+            case .daily: return "D"
+            case .monthly: return "M"
+            default: return "•"
+            }
+        } ?? "?"
+        ringView.fraction = selected?.percent.map {
+            // Exhaustion stays prominent even when remaining usage is zero.
+            $0 >= 100 ? 1 : max(0, min(100, config.percentDisplayMode == .remaining ? 100 - $0 : $0)) / 100
+        }
+        let usedPercent = selected?.percent
+        ringView.riskColor = usedPercent.map {
+            $0 >= Config.criticalColorThreshold ? .systemRed
+                : $0 >= config.warningThreshold ? .systemOrange : nil
+        } ?? nil
         let pct = selected?.percent ?? p.headlinePercent ?? 0
         let color: NSColor = selected?.percent == nil && p.headlinePercent == nil ? .labelColor
             : pct >= 90 ? .systemRed : pct >= 75 ? .systemOrange : .labelColor
-        button.attributedTitle = NSAttributedString(
+        if config.menuBarStyle == .text { button.attributedTitle = NSAttributedString(
             string: p.menuBarValue(for: mode,
                                    percentMode: config.percentDisplayMode,
                                    quotaID: quotaID), attributes: [
                 .font: OrbTypography.regular(12),
-                .foregroundColor: color])
+                .foregroundColor: color]) }
+    }
+
+    private func configureStatusStyle() {
+        let usesRing = config.menuBarStyle == .ring
+        statusItem.length = usesRing ? 24 : NSStatusItem.variableLength
+        ringView.isHidden = !usesRing
+        if usesRing { statusItem.button?.attributedTitle = NSAttributedString(string: "") }
     }
 
     // MARK: - menu
@@ -1335,6 +1420,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.config = next
                 self.configRevision += 1
                 next.save()
+                if let provider = self.lastProvider {
+                    self.updateTitle(provider)
+                } else {
+                    self.configureStatusStyle()
+                }
                 if next.thresholdAlertsEnabled {
                     NotificationManager.shared.requestIfNeeded()
                 }
@@ -1438,19 +1528,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 guard let percent = window.percent else { continue }
                 let windowKey = "\(provider.providerID.rawValue)/\(quota.id)/\(window.kind.rawValue)"
                 let previous = lastPercents[windowKey] ?? percent
-                let levels: [(String, Double)] = [
-                    ("warning", config.warningThreshold),
-                    ("critical", config.criticalThreshold)
-                ]
-                for (level, threshold) in levels where percent >= threshold {
-                    guard hasAlertBaseline, previous < threshold else { continue }
+                if hasAlertBaseline, previous < config.warningThreshold,
+                   percent >= config.warningThreshold {
                     let label = provider.effectiveQuotas.count > 1
                         ? "\(quota.shortName) · \(window.label)"
                         : window.label
                     NotificationManager.shared.notifyLimit(label: label,
                                                            percent: Int(window.displayPercent(for: config.percentDisplayMode).rounded()),
                                                            percentMode: config.percentDisplayMode,
-                                                           level: "\(windowKey)-\(level)")
+                                                           level: "\(windowKey)-warning")
                 }
                 lastPercents[windowKey] = percent
             }

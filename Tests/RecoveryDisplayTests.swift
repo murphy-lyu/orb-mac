@@ -4,6 +4,18 @@ import Foundation
 @main
 struct RecoveryDisplayTests {
     static func main() {
+        let legacy = try! JSONDecoder().decode(Config.self, from: Data("{}".utf8))
+        assert(legacy.menuBarStyle == .ring)
+        let oldRefreshConfig = try! JSONDecoder().decode(
+            Config.self, from: Data("{\"refreshSeconds\":15}".utf8))
+        assert(Config.refreshSeconds == 60)
+        let migrated = try! JSONEncoder().encode(oldRefreshConfig)
+        assert((try! JSONSerialization.jsonObject(with: migrated) as! [String: Any])["refreshSeconds"] == nil)
+        var textConfig = legacy
+        textConfig.menuBarStyle = .text
+        let saved = try! JSONEncoder().encode(textConfig)
+        assert(try! JSONDecoder().decode(Config.self, from: saved).menuBarStyle == .text)
+
         let now = Date()
         let soon = now.addingTimeInterval(60)
         let later = now.addingTimeInterval(7 * 86400)
