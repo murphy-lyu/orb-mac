@@ -38,9 +38,25 @@ final class UsageRingView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    func statusImage() -> NSImage {
+        let fraction = self.fraction
+        let letter = self.letter
+        let isExhausted = self.isExhausted
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            let renderer = UsageRingView(frame: rect)
+            renderer.fraction = fraction
+            renderer.letter = letter
+            renderer.isExhausted = isExhausted
+            renderer.draw(rect)
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
     override func draw(_ dirtyRect: NSRect) {
-        let highlighted = (superview as? NSButton)?.isHighlighted == true
-        let color = highlighted ? NSColor.white : .labelColor
+        // Template images use alpha; AppKit supplies active/inactive tint.
+        let color = NSColor.black
         let center = NSPoint(x: bounds.midX, y: bounds.midY)
         let lineWidth: CGFloat = 2
         let radius: CGFloat = (16 - lineWidth) / 2
@@ -652,11 +668,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.isVisible = true
         statusItem.button?.title = "…"
-        if let button = statusItem.button {
-            ringView.frame = button.bounds
-            ringView.autoresizingMask = [.width, .height]
-            button.addSubview(ringView)
-        }
         configureStatusStyle()
         let placeholder = NSMenu(); placeholder.addItem(sub("status.loading".l10n, dim: true))
         placeholder.delegate = self
@@ -775,6 +786,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ringView.fraction = nil
             ringView.letter = "?"
             ringView.isExhausted = false
+            if config.menuBarStyle == .ring { button.image = ringView.statusImage() }
             button.toolTip = "\(p.name) · \("status.unavailable".l10n)"
             button.setAccessibilityLabel(button.toolTip)
             if config.menuBarStyle == .text { button.attributedTitle = NSAttributedString(string: "\(p.name) ⚠︎", attributes: [
@@ -821,6 +833,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             max(0, min(100, config.percentDisplayMode == .remaining ? 100 - $0 : $0)) / 100
         }
         ringView.isExhausted = (selected?.percent ?? 0) >= 100
+        if config.menuBarStyle == .ring { button.image = ringView.statusImage() }
         let pct = selected?.percent ?? p.headlinePercent ?? 0
         let color: NSColor = selected?.percent == nil && p.headlinePercent == nil ? .labelColor
             : pct >= 90 ? .systemRed : pct >= 75 ? .systemOrange : .labelColor
@@ -835,8 +848,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func configureStatusStyle() {
         let usesRing = config.menuBarStyle == .ring
         statusItem.length = usesRing ? 24 : NSStatusItem.variableLength
-        ringView.isHidden = !usesRing
-        if usesRing { statusItem.button?.attributedTitle = NSAttributedString(string: "") }
+        if let button = statusItem.button {
+            button.imagePosition = usesRing ? .imageOnly : .noImage
+            button.image = usesRing ? ringView.statusImage() : nil
+            if usesRing { button.attributedTitle = NSAttributedString(string: "") }
+        }
     }
 
     // MARK: - menu
