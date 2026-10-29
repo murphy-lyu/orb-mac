@@ -107,7 +107,7 @@ final class UsageRingView: NSView {
             }
         }
         let text = NSAttributedString(string: letter, attributes: [
-            .font: OrbTypography.regular(10), .foregroundColor: color
+            .font: OrbTypography.emphasized(10), .foregroundColor: color
         ])
         let size = text.size()
         text.draw(at: NSPoint(x: center.x - size.width / 2, y: center.y - size.height / 2))
