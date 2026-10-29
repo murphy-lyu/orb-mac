@@ -3,6 +3,7 @@
 "settings.menuBarStyle" = "Menu bar";
 "settings.menuBarStyle.ring" = "Ring";
 "settings.menuBarStyle.text" = "Text";
+"settings.menuBarStyle.hint" = "Right-click the menu bar icon to switch styles.";
 "status.resetsAt" = "Resets at %@";
 "action.refresh" = "Refresh Now";
 "action.cancel" = "Cancel";

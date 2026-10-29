@@ -35,7 +35,8 @@ struct GeneralSettingsTab: View {
                     .onChange(of: launchAtLogin) { newValue in applyLaunchAtLogin(newValue) }
             }
 
-            Section(header: Text("settings.section.appearance")) {
+            Section(header: Text("settings.section.appearance"),
+                    footer: Text("settings.menuBarStyle.hint")) {
                 Picker("settings.menuBarStyle", selection: Binding(
                     get: { config.menuBarStyle },
                     set: { updateConfig(\.menuBarStyle, $0) }

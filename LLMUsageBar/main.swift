@@ -20,6 +20,21 @@ enum OrbTypography {
             ?? NSFont.systemFont(ofSize: size, weight: .semibold)
     }
 
+    static func statusTextImage(_ value: String) -> NSImage {
+        let text = NSAttributedString(string: value, attributes: [
+            .font: regular(12), .foregroundColor: NSColor.black
+        ])
+        let textSize = text.size()
+        let size = NSSize(width: ceil(textSize.width) + 2, height: max(18, ceil(textSize.height)))
+        let image = NSImage(size: size, flipped: false) { rect in
+            text.draw(at: NSPoint(x: (rect.width - textSize.width) / 2,
+                                  y: (rect.height - textSize.height) / 2))
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
     static func swiftUIRegular(_ size: CGFloat) -> Font {
         usesBerkeleyMono ? .custom(regularName, fixedSize: size) : .system(size: size)
     }
@@ -657,6 +672,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var refreshPending = false
     private var forceReconnectPending = false
     private var wakeObserver: NSObjectProtocol?
+    private var statusRightClickMonitor: Any?
+    private var statusRightClickInProgress = false
     private var configRevision = 0
     private var hasAlertBaseline = false
     private var lastPercents: [String: Double] = [:]
@@ -672,6 +689,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let placeholder = NSMenu(); placeholder.addItem(sub("status.loading".l10n, dim: true))
         placeholder.delegate = self
         statusItem.menu = placeholder
+        statusRightClickMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.rightMouseDown, .rightMouseUp]
+        ) { [weak self] event in
+            guard let self else { return event }
+            // Switching to the ring can shrink the button before mouse-up.
+            if event.type == .rightMouseUp, self.statusRightClickInProgress {
+                self.statusRightClickInProgress = false
+                return nil
+            }
+            guard let button = self.statusItem.button,
+                  event.window === button.window,
+                  button.bounds.contains(button.convert(event.locationInWindow, from: nil)) else {
+                return event
+            }
+            if event.type == .rightMouseDown {
+                self.statusRightClickInProgress = true
+                self.toggleMenuBarStyle()
+            }
+            return nil
+        }
         if config.thresholdAlertsEnabled { NotificationManager.shared.requestIfNeeded() }
         CodexAppServerClient.setRateLimitsUpdateHandler { [weak self] in
             DispatchQueue.main.async {
@@ -692,6 +729,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         CodexAppServerClient.setRateLimitsUpdateHandler(nil)
+        if let statusRightClickMonitor {
+            NSEvent.removeMonitor(statusRightClickMonitor)
+        }
         if let wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
         }
@@ -789,9 +829,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if config.menuBarStyle == .ring { button.image = ringView.statusImage() }
             button.toolTip = "\(p.name) · \("status.unavailable".l10n)"
             button.setAccessibilityLabel(button.toolTip)
-            if config.menuBarStyle == .text { button.attributedTitle = NSAttributedString(string: "\(p.name) ⚠︎", attributes: [
-                .font: OrbTypography.regular(12),
-                .foregroundColor: NSColor.secondaryLabelColor]) }
+            if config.menuBarStyle == .text {
+                button.image = OrbTypography.statusTextImage("\(p.name) ⚠︎")
+            }
             return
         }
         let quotaID = config.selectedQuotaID(for: p.providerID)
@@ -834,24 +874,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         ringView.isExhausted = (selected?.percent ?? 0) >= 100
         if config.menuBarStyle == .ring { button.image = ringView.statusImage() }
-        let pct = selected?.percent ?? p.headlinePercent ?? 0
-        let color: NSColor = selected?.percent == nil && p.headlinePercent == nil ? .labelColor
-            : pct >= 90 ? .systemRed : pct >= 75 ? .systemOrange : .labelColor
-        if config.menuBarStyle == .text { button.attributedTitle = NSAttributedString(
-            string: p.menuBarValue(for: mode,
-                                   percentMode: config.percentDisplayMode,
-                                   quotaID: quotaID), attributes: [
-                .font: OrbTypography.regular(12),
-                .foregroundColor: color]) }
+        if config.menuBarStyle == .text {
+            button.image = OrbTypography.statusTextImage(p.menuBarValue(
+                for: mode, percentMode: config.percentDisplayMode, quotaID: quotaID))
+        }
     }
 
     private func configureStatusStyle() {
         let usesRing = config.menuBarStyle == .ring
         statusItem.length = usesRing ? 24 : NSStatusItem.variableLength
         if let button = statusItem.button {
-            button.imagePosition = usesRing ? .imageOnly : .noImage
-            button.image = usesRing ? ringView.statusImage() : nil
-            if usesRing { button.attributedTitle = NSAttributedString(string: "") }
+            button.imagePosition = .imageOnly
+            button.image = usesRing ? ringView.statusImage() : OrbTypography.statusTextImage("…")
+            button.attributedTitle = NSAttributedString(string: "")
         }
     }
 
@@ -1439,6 +1474,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: - actions
+
+    private func toggleMenuBarStyle() {
+        config.menuBarStyle = config.menuBarStyle == .ring ? .text : .ring
+        configRevision += 1
+        config.save()
+        if let provider = lastProvider {
+            updateTitle(provider)
+        } else {
+            configureStatusStyle()
+        }
+        settingsOpener?.syncIfOpen(config: config)
+    }
 
     @objc private func openConfig() {
         if settingsOpener == nil {

@@ -3,6 +3,7 @@
 "settings.menuBarStyle" = "菜单栏";
 "settings.menuBarStyle.ring" = "圆环";
 "settings.menuBarStyle.text" = "文字";
+"settings.menuBarStyle.hint" = "右键菜单栏图标可切换样式。";
 "status.resetsAt" = "%@ 重置";
 "action.refresh" = "立即刷新";
 "action.cancel" = "取消";
