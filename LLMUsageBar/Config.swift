@@ -12,7 +12,6 @@ struct Config: Codable {
     var percentDisplayMode: PercentDisplayMode = .remaining
     var thresholdAlertsEnabled: Bool = true
     var warningThreshold: Double = 80
-    static let criticalColorThreshold: Double = 95
 
     init() {}
 

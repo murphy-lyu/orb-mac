@@ -34,30 +34,46 @@ enum OrbTypography {
 final class UsageRingView: NSView {
     var fraction: Double? { didSet { needsDisplay = true } }
     var letter = "" { didSet { needsDisplay = true } }
-    var riskColor: NSColor? { didSet { needsDisplay = true } }
+    var isExhausted = false { didSet { needsDisplay = true } }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
         let highlighted = (superview as? NSButton)?.isHighlighted == true
-        let color = highlighted ? NSColor.white : (riskColor ?? .labelColor)
+        let color = highlighted ? NSColor.white : .labelColor
         let center = NSPoint(x: bounds.midX, y: bounds.midY)
         let lineWidth: CGFloat = 2
         let radius: CGFloat = (16 - lineWidth) / 2
-        let track = NSBezierPath(ovalIn: NSRect(
-            x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
-        track.lineWidth = lineWidth
-        color.withAlphaComponent(0.20).setStroke()
-        track.stroke()
-        if let fraction, fraction > 0 {
-            let arc = NSBezierPath()
-            arc.lineWidth = lineWidth
-            arc.lineCapStyle = .round
-            arc.appendArc(withCenter: center, radius: radius, startAngle: 90,
-                          endAngle: 90 - CGFloat(min(1, max(0, fraction))) * 360,
-                          clockwise: true)
+        if isExhausted {
+            let segments = NSBezierPath()
+            segments.lineWidth = lineWidth
+            segments.lineCapStyle = .round
+            for index in 0..<8 {
+                let start = CGFloat(90 - index * 45)
+                segments.move(to: NSPoint(
+                    x: center.x + radius * cos(start * .pi / 180),
+                    y: center.y + radius * sin(start * .pi / 180)))
+                segments.appendArc(withCenter: center, radius: radius,
+                                   startAngle: start, endAngle: start - 22, clockwise: true)
+            }
             color.setStroke()
-            arc.stroke()
+            segments.stroke()
+        } else {
+            let track = NSBezierPath(ovalIn: NSRect(
+                x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+            track.lineWidth = lineWidth
+            color.withAlphaComponent(0.20).setStroke()
+            track.stroke()
+            if let fraction, fraction > 0 {
+                let arc = NSBezierPath()
+                arc.lineWidth = lineWidth
+                arc.lineCapStyle = .round
+                arc.appendArc(withCenter: center, radius: radius, startAngle: 90,
+                              endAngle: 90 - CGFloat(min(1, max(0, fraction))) * 360,
+                              clockwise: true)
+                color.setStroke()
+                arc.stroke()
+            }
         }
         let text = NSAttributedString(string: letter, attributes: [
             .font: OrbTypography.regular(10), .foregroundColor: color
@@ -758,7 +774,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard p.available else {
             ringView.fraction = nil
             ringView.letter = "?"
-            ringView.riskColor = nil
+            ringView.isExhausted = false
             button.toolTip = "\(p.name) · \("status.unavailable".l10n)"
             button.setAccessibilityLabel(button.toolTip)
             if config.menuBarStyle == .text { button.attributedTitle = NSAttributedString(string: "\(p.name) ⚠︎", attributes: [
@@ -802,14 +818,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         } ?? "?"
         ringView.fraction = selected?.percent.map {
-            // Exhaustion stays prominent even when remaining usage is zero.
-            $0 >= 100 ? 1 : max(0, min(100, config.percentDisplayMode == .remaining ? 100 - $0 : $0)) / 100
+            max(0, min(100, config.percentDisplayMode == .remaining ? 100 - $0 : $0)) / 100
         }
-        let usedPercent = selected?.percent
-        ringView.riskColor = usedPercent.map {
-            $0 >= Config.criticalColorThreshold ? .systemRed
-                : $0 >= config.warningThreshold ? .systemOrange : nil
-        } ?? nil
+        ringView.isExhausted = (selected?.percent ?? 0) >= 100
         let pct = selected?.percent ?? p.headlinePercent ?? 0
         let color: NSColor = selected?.percent == nil && p.headlinePercent == nil ? .labelColor
             : pct >= 90 ? .systemRed : pct >= 75 ? .systemOrange : .labelColor
